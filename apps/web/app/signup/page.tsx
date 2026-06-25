@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { librechatApi } from "@/lib/api-client";
 import { setAuth } from "@/lib/auth";
 
 export default function SignupPage() {
@@ -37,19 +36,33 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      await librechatApi.register({
-        name: form.name.trim(),
-        username: form.username.trim(),
-        email: form.email.trim(),
-        password: form.password,
-        confirm_password: form.confirmPassword,
+      const regRes = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          username: form.username.trim(),
+          email: form.email.trim(),
+          password: form.password,
+          confirm_password: form.confirmPassword,
+        }),
       });
+      if (!regRes.ok) {
+        const data = await regRes.json().catch(() => ({}));
+        throw new Error(data.message || `회원가입 실패 (HTTP ${regRes.status})`);
+      }
 
       // Auto-login after signup so the user lands in /onboarding authenticated.
-      const { token, user } = await librechatApi.login({
-        email: form.email.trim(),
-        password: form.password,
+      const loginRes = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.email.trim(), password: form.password }),
       });
+      if (!loginRes.ok) {
+        const data = await loginRes.json().catch(() => ({}));
+        throw new Error(data.message || `로그인 실패 (HTTP ${loginRes.status})`);
+      }
+      const { token, user } = await loginRes.json();
       setAuth(token, { id: user.id, name: user.name, username: user.username });
       router.push("/onboarding");
     } catch (err) {

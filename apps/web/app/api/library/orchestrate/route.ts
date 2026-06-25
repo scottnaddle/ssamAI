@@ -63,16 +63,7 @@ const DEFAULTS: Record<string, Record<string, string>> = {
 function detectWorkflow(text: string): { name: string; calls: SkillCall[]; description: string } | null {
   const t = text.toLowerCase();
 
-  if (/(차시별|차시\s*\d|\d차시|자료\s*일괄|자료\s*전부|수업\s*자료|교수\s*학습)/.test(t)) {
-    return {
-      name: "차시별 자료 일괄",
-      description: "수업 과정안 + 활동지 + 형성평가",
-      calls: [
-        { skillName: "lesson-plan", params: DEFAULTS.lesson_plan },
-      ],
-    };
-  }
-
+  // 1. 현장학습 (가장 specific — "자료 일괄" 같은 generic 키워드보다 먼저 체크)
   if (/(현장학습|현장체험|수학여행|안전체험|소풍|견학|박물관|체험학습)/.test(t)) {
     return {
       name: "현장학습 자료 일괄",
@@ -83,6 +74,7 @@ function detectWorkflow(text: string): { name: string; calls: SkillCall[]; descr
     };
   }
 
+  // 2. 수행평가 (specific assessment keywords)
   if (/(수행평가|루브릭|채점기준|프로젝트\s*평가|발표\s*평가)/.test(t)) {
     return {
       name: "수행평가 일괄",
@@ -93,6 +85,7 @@ function detectWorkflow(text: string): { name: string; calls: SkillCall[]; descr
     };
   }
 
+  // 3. 학기 초 (specific semester start keywords)
   if (/(학기\s*초|학년\s*초|새\s*학기|3월|시작\s*학기)/.test(t)) {
     return {
       name: "학기 초 행정 일괄",
@@ -100,6 +93,17 @@ function detectWorkflow(text: string): { name: string; calls: SkillCall[]; descr
       calls: [
         { skillName: "home-letter", params: { ...DEFAULTS.home_letter, type: "일반안내", title: "학기 초 수업 운영 안내" } },
         { skillName: "official-letter", params: { ...DEFAULTS.official_letter, type: "공문", title: "학기 초 교육과정 운영 계획" } },
+      ],
+    };
+  }
+
+  // 4. 차시별 자료 (generic — "자료 일괄" 포함, 마지막에 체크)
+  if (/(차시별|차시\s*\d|\d차시|자료\s*일괄|자료\s*전부|수업\s*자료|교수\s*학습)/.test(t)) {
+    return {
+      name: "차시별 자료 일괄",
+      description: "수업 과정안 + 활동지 + 형성평가",
+      calls: [
+        { skillName: "lesson-plan", params: DEFAULTS.lesson_plan },
       ],
     };
   }

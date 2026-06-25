@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { librechatApi } from "@/lib/api-client";
 import { setAuth } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -19,7 +18,16 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { token, user } = await librechatApi.login({ email, password });
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || `로그인 실패 (HTTP ${res.status})`);
+      }
+      const { token, user } = await res.json();
       setAuth(token, { id: user.id, name: user.name, username: user.username });
       router.push("/chat");
     } catch (err) {
