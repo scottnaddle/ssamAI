@@ -12,6 +12,9 @@
     "build": "pnpm --filter @ssamai/web build",
     "lint": "pnpm --filter @ssamai/web lint",
     "typecheck": "pnpm --filter @ssamai/web typecheck",
+    "test": "npm run test:python && npm run test:web",
+    "test:python": "bash scripts/test-python.sh",
+    "test:web": "cd apps/web && npm test",
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f"
