@@ -1,0 +1,72 @@
+# ─────────────────────────────────────────────────────────────
+# LibreChat configuration for Project ssamAI
+# Mounted at /app/librechat.yaml via docker-compose (CONFIG_PATH).
+#
+# ssamAI uses LibreChat as API server only — the Next.js app is the
+# UI. The OpenAI endpoint is reverse-proxied through LiteLLM (see
+# OPENAI_REVERSE_PROXY in docker-compose.yml). LibreChat v0.8.6 reads
+# OPENAI_REVERSE_PROXY, NOT OPENAI_API_BASE.
+# ─────────────────────────────────────────────────────────────
+
+version: 1.2.1
+cache: true
+
+# ── Registration ─────────────────────────────────────────────
+# Phase 1: allow email signup (LibreChat built-in). Social login
+# (Kakao/Google) lands in Phase 2.
+registration:
+  socialLogins: []
+  allowedDomains: ["gmail.com", "naver.com", "kakao.com", "example.com", "test.com"]
+
+# ── File handling ────────────────────────────────────────────
+# Phase 1 uses local storage inside the container volume.
+# Phase 3 → S3 / NCloud Object Storage.
+fileStrategy: "local"
+fileConfig:
+  serverFileSize: 50          # MB — pptx files can be chunky
+  supportedMimeTypes:
+    - "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    - "application/pdf"
+    - "text/plain"
+    - "image/png"
+    - "image/jpeg"
+
+# ── OpenAI endpoint ─────────────────────────────────────────
+# Reverse-proxied through LiteLLM (OPENAI_REVERSE_PROXY env var).
+# The apiKey + reverseProxy come from docker-compose env, so we only
+# override the model list + display behavior here.
+endpoints:
+  openAI:
+    # Static model list — must match what LiteLLM exposes at /v1/models.
+    # ssamai-{light,medium,heavy} are the PRD tier aliases; the others
+    # are direct upstream model names for explicit selection.
+    models:
+      default: [
+        "ssamai-light",
+        "ssamai-medium",
+        "ssamai-heavy",
+        "MiniMax-M2.5-highspeed",
+        "deepseek-chat",
+        "deepseek-reasoner"
+      ]
+      fetch: false
+    # UI label shown in the model picker.
+    modelDisplayLabel: "ssamAI"
+    # LiteLLM does not accept OpenAI-specific stream_options/user params.
+    dropParams: ["stream_options", "user"]
+    streamRate: 35
+    # Conversation title generation uses the cheapest tier.
+    titleConvo: true
+    titleMethod: "functions"
+    titleModel: "ssamai-light"
+    summarize: false
+
+# ── Rate limiting ────────────────────────────────────────────
+rateLimits:
+  fileUploads:
+    ipMax: 100
+    ipWindowInMinutes: 60
+    userMax: 50
+    userWindowInMinutes: 60
+
+# ── Misc ─────────────────────────────────────────────────────

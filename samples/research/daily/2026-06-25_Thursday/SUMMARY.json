@@ -1,0 +1,39 @@
+{
+  "date": "2026-06-25_Thursday",
+  "collected_at": "2026-06-25T10:01:09.383512+09:00",
+  "total_sources": 6,
+  "successful": 6,
+  "total_size": 40051,
+  "by_site": [
+    {
+      "site": "에듀넷",
+      "category": "수업자료",
+      "size": 8000
+    },
+    {
+      "site": "금성교과서 자료실",
+      "category": "수업자료",
+      "size": 8000
+    },
+    {
+      "site": "미래엔 교사",
+      "category": "활동지",
+      "size": 8000
+    },
+    {
+      "site": "천재교과서",
+      "category": "교과서",
+      "size": 51
+    },
+    {
+      "site": "경기도교육청",
+      "category": "평가",
+      "size": 8000
+    },
+    {
+      "site": "정부24",
+      "category": "행정문서",
+      "size": 8000
+    }
+  ]
+}

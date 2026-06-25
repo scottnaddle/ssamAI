@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Docker
+docker-data/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# LibreChat runtime
+apps/librechat/data/
+apps/librechat/logs/
+
+# Test coverage
+coverage/
+
+# Temporary
+.cache/
+tmp/
+
+# Auto-merge workflow backups (skill-service)
+services/skill-service/app/skills/*.bak.*
+
+# macOS FUSE temp files
+.fuse_hidden*
+
+# Screenshots / sample outputs (regenerated, not source)
+samples/output/loop3-*.png
+samples/output/phase3-*.png

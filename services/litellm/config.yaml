@@ -1,0 +1,63 @@
+model_list:
+  # ── Tier 1 (light): summarisation, parsing, simple edits ──
+  # MiniMax api.minimax.io is OpenAI-compatible — use openai/ provider prefix.
+  - model_name: ssamai-light
+    litellm_params:
+      model: openai/MiniMax-M2.5-highspeed
+      api_key: os.environ/MINIMAX_API_KEY
+      api_base: os.environ/MINIMAX_API_BASE
+
+  # Raw model passthrough (for clients that want explicit model)
+  - model_name: MiniMax-M2.5-highspeed
+    litellm_params:
+      model: openai/MiniMax-M2.5-highspeed
+      api_key: os.environ/MINIMAX_API_KEY
+      api_base: os.environ/MINIMAX_API_BASE
+
+  # ── Tier 2 (medium): new material generation, balanced quality ──
+  - model_name: ssamai-medium
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: os.environ/DEEPSEEK_API_BASE
+
+  - model_name: deepseek-chat
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: os.environ/DEEPSEEK_API_BASE
+
+  # ── Tier 3 (heavy): curriculum design, deep reasoning ──
+  - model_name: ssamai-heavy
+    litellm_params:
+      model: deepseek/deepseek-reasoner
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: os.environ/DEEPSEEK_API_BASE
+
+  - model_name: deepseek-reasoner
+    litellm_params:
+      model: deepseek/deepseek-reasoner
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: os.environ/DEEPSEEK_API_BASE
+
+router_settings:
+  routing_strategy: usage-based-routing-v2
+  allowed_fails: 3
+  cooldown_time: 60
+  num_retries: 2
+  timeout: 60
+  fallbacks:
+    - ssamai-medium: [ssamai-light]
+    - ssamai-heavy: [ssamai-medium]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  salt_key: os.environ/LITELLM_SALT_KEY
+  disable_spend_logs: false
+  disable_reset_budget: false
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 60
+  stream: true
+  set_verbose: false

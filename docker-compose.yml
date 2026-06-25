@@ -1,0 +1,231 @@
+# ─────────────────────────────────────────────────────────────
+# Project ssamAI — Phase 1 MVP infra (local dev)
+# Usage: `docker compose up -d`
+# All services share the `ssamAI-net` bridge network.
+# ─────────────────────────────────────────────────────────────
+
+name: ssamai
+
+networks:
+  ssamai-net:
+    driver: bridge
+
+volumes:
+  mongo-data:
+  neo4j-data:
+  redis-data:
+  librechat-images:
+  librechat-files:
+
+services:
+  # ── Frontend (Next.js) ─────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runner
+    container_name: ssamai-web
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - librechat
+    networks: [ssamai-net]
+    restart: unless-stopped
+
+  # ── LLM Router (LiteLLM) ───────────────────────────────────
+  # Single OpenAI-compatible endpoint that routes to DeepSeek / MiniMax
+  # per the PRD model-tier strategy.
+  litellm:
+    image: litellm/litellm:latest
+    container_name: ssamai-litellm
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    env_file: .env
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY}
+      MINIMAX_GROUP_ID: ${MINIMAX_GROUP_ID:-}
+    volumes:
+      - ./services/litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://127.0.0.1:4000/health/liveness')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks: [ssamai-net]
+    restart: unless-stopped
+
+  # ── Agent Harness (LibreChat API server only) ──────────────
+  # Custom Next.js UI calls LibreChat REST + WebSocket endpoints.
+  librechat:
+    image: ghcr.io/danny-avila/librechat:latest
+    container_name: ssamai-librechat
+    ports:
+      - "${LIBRECHAT_PORT:-3090}:3080"
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      CONFIG_PATH: /app/librechat.yaml
+      MONGO_URI: ${MONGO_URI}
+      CREDS_KEY: ${CREDS_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      DOMAIN_CLIENT: ${DOMAIN_CLIENT}
+      DOMAIN_SERVER: http://host.docker.internal:${LIBRECHAT_PORT:-3090}
+      ENDPOINTS: ${ENDPOINTS}
+      ALLOW_REGISTRATION: "true"
+      ALLOW_EMAIL_LOGIN: "true"
+      ALLOW_SOCIAL_LOGIN: "true"
+      ALLOW_UNVERIFIED_EMAIL_LOGIN: "true"
+      # LibreChat v0.8.6 reads OPENAI_REVERSE_PROXY (NOT OPENAI_API_BASE)
+      # in api/server/services/Config/EndpointService.js → generateConfig(openAIApiKey, OPENAI_REVERSE_PROXY).
+      # The OpenAI endpoint routes all chat completions through this URL.
+      OPENAI_REVERSE_PROXY: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+    volumes:
+      - ./apps/librechat/librechat.yaml:/app/librechat.yaml:ro
+      - librechat-images:/app/client/public/images
+      - librechat-files:/app/api/server/files
+    depends_on:
+      mongo:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    networks: [ssamai-net]
+    restart: unless-stopped
+
+  # ── MongoDB (LibreChat backing store) ──────────────────────
+  mongo:
+    image: mongo:7
+    container_name: ssamai-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-ssamai}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-change-me-mongo-pw}
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --eval 'db.adminCommand(\"ping\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ssamai-net]
+
+  # ── Neo4j (Graphiti knowledge graph) ───────────────────────
+  # APOC only — Graphiti does not require GDS in Phase 1.
+  neo4j:
+    image: neo4j:5.20-community
+    container_name: ssamai-neo4j
+    ports:
+      - "7474:7474"   # browser
+      - "7687:7687"   # bolt
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-change-me-neo4j-password}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: apoc.*
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_default__listen__address: 0.0.0.0
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/7687' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
+    networks: [ssamai-net]
+    restart: unless-stopped
+
+  # ── Redis (community feed cache — Phase 2 prep) ────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ssamai-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [ssamai-net]
+
+  # ── PPT microservice (python-pptx) ─────────────────────────
+  ppt-service:
+    build:
+      context: ./services/ppt-service
+      dockerfile: Dockerfile
+    container_name: ssamai-ppt-service
+    ports:
+      - "${PPT_SERVICE_PORT:-8200}:8200"
+    env_file: .env
+    environment:
+      PORT: 8200
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY}
+    depends_on:
+      litellm:
+        condition: service_healthy
+    networks: [ssamai-net]
+    restart: unless-stopped
+
+  # ── Skill service (document generation) ─────────────────────
+  skill-service:
+    build:
+      context: ./services/skill-service
+      dockerfile: Dockerfile
+    container_name: ssamai-skill-service
+    ports:
+      - "${SKILL_SERVICE_PORT:-8300}:8300"
+    env_file: .env
+    environment:
+      PORT: 8300
+      NEO4J_URI: ${NEO4J_URI}
+      NEO4J_USER: ${NEO4J_USER}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY}
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    networks: [ssamai-net]
+    restart: unless-stopped
+
+  # ── Persona service (Graphiti) ─────────────────────────────
+  persona-service:
+    build:
+      context: ./services/persona-service
+      dockerfile: Dockerfile
+    container_name: ssamai-persona-service
+    ports:
+      - "${PERSONA_SERVICE_PORT:-8100}:8100"
+    env_file: .env
+    environment:
+      PORT: 8100
+      NEO4J_URI: ${NEO4J_URI}
+      NEO4J_USER: ${NEO4J_USER}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY}
+      GRAPHITI_GROUP_ID: ${GRAPHITI_GROUP_ID:-default-teacher-group}
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    networks: [ssamai-net]
+    restart: unless-stopped
