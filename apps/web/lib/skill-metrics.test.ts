@@ -5,7 +5,13 @@ vi.mock("@/lib/neo4j", () => ({
 }));
 
 import { runQuery } from "@/lib/neo4j";
-import { getSkillMetrics, getRecentSkillCalls, recordSkillCall } from "@/lib/skill-metrics";
+import {
+  DEFAULT_VARIANTS,
+  getRecentSkillCalls,
+  getSkillMetrics,
+  pickVariant,
+  recordSkillCall,
+} from "@/lib/skill-metrics";
 
 const mockedRunQuery = runQuery as unknown as ReturnType<typeof vi.fn>;
 
@@ -90,5 +96,47 @@ describe("skill-metrics helpers", () => {
     expect(result[0].success).toBe(true);
     expect(result[1].success).toBe(false);
     expect(result[1].error_type).toBe("Error");
+  });
+});
+
+describe("A/B variant selection (Phase 2)", () => {
+  it("pickVariant는 0 또는 1 반환 (default 2 variants)", () => {
+    for (let i = 0; i < 50; i++) {
+      const v = pickVariant("home-letter", `teacher-${i}`);
+      expect([0, 1]).toContain(v);
+    }
+  });
+
+  it("pickVariant는 totalVariants=3일 때 0/1/2 반환", () => {
+    for (let i = 0; i < 100; i++) {
+      const v = pickVariant("home-letter", `t-${i}`, 3);
+      expect([0, 1, 2]).toContain(v);
+    }
+  });
+
+  it("DEFAULT_VARIANTS는 [control, treatment]", () => {
+    expect(DEFAULT_VARIANTS).toEqual(["control", "treatment"]);
+    expect(DEFAULT_VARIANTS[0]).toBe("control");
+    expect(DEFAULT_VARIANTS[1]).toBe("treatment");
+  });
+
+  it("pickVariant 분포는 50/50 근처 (±20% 허용)", () => {
+    const counts = [0, 0];
+    const N = 1000;
+    for (let i = 0; i < N; i++) {
+      counts[pickVariant("home-letter", `t-${i}`)]++;
+    }
+    const ratio0 = counts[0] / N;
+    const ratio1 = counts[1] / N;
+    expect(ratio0).toBeGreaterThan(0.3);
+    expect(ratio0).toBeLessThan(0.7);
+    expect(ratio1).toBeGreaterThan(0.3);
+    expect(ratio1).toBeLessThan(0.7);
+  });
+
+  it("동일 teacher_id + skill_name은 동일 minute에서 같은 variant", () => {
+    const a = pickVariant("home-letter", "t-1");
+    const b = pickVariant("home-letter", "t-1");
+    expect(a).toBe(b);
   });
 });

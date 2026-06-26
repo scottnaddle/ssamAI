@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { markdownToHwpx } from "@ssabrojs/hwpxjs";
 import { generateMarkdown } from "@/lib/skill-templates";
 import { trackUsage } from "@/lib/usage-tracker";
-import { recordSkillCall } from "@/lib/skill-metrics";
+import { DEFAULT_VARIANTS, pickVariant, recordSkillCall } from "@/lib/skill-metrics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -230,6 +230,8 @@ export async function POST(req: NextRequest) {
 
     const input = buildInputFromParams(skill_name, params);
     const t0 = Date.now();
+    const variantIdx = pickVariant(skill_name, teacher_id || "anon");
+    const variant = DEFAULT_VARIANTS[variantIdx];
     let md: string;
     let buffer: ArrayBuffer | Uint8Array;
     try {
@@ -244,6 +246,7 @@ export async function POST(req: NextRequest) {
         source: "single",
         success: true,
         latency_ms: Date.now() - t0,
+        variant,
       });
     } catch (err) {
       await recordSkillCall({
@@ -254,6 +257,7 @@ export async function POST(req: NextRequest) {
         latency_ms: Date.now() - t0,
         error_type: err instanceof Error ? err.name : "error",
         error_message: err instanceof Error ? err.message : String(err),
+        variant,
       });
       throw err;
     }

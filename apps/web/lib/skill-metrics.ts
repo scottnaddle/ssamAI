@@ -8,7 +8,19 @@ export type SkillCallRecord = {
   latency_ms: number;
   error_type?: string | null;
   error_message?: string | null;
+  variant?: string | null;
 };
+
+export function pickVariant(skillName: string, teacherId: string, totalVariants = 2): number {
+  const key = `${skillName}:${teacherId}:${Math.floor(Date.now() / 1000 / 60)}`;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % totalVariants;
+}
+
+export const DEFAULT_VARIANTS = ["control", "treatment"] as const;
 
 export type SkillMetrics = {
   skill_name: string;
@@ -35,6 +47,7 @@ export async function recordSkillCall(r: SkillCallRecord): Promise<void> {
          success: $success,
          latency_ms: toInteger($latency_ms),
          error_type: $error_type,
+         variant: $variant,
          created_at: timestamp()
        })
        MERGE (s)-[:HAS_CALL]->(c)`,
@@ -46,6 +59,7 @@ export async function recordSkillCall(r: SkillCallRecord): Promise<void> {
         success: r.success,
         latency_ms: r.latency_ms,
         error_type: r.error_type ?? null,
+        variant: r.variant ?? "control",
       },
       "write",
     );
