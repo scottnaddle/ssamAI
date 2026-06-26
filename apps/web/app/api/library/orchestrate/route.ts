@@ -3,6 +3,7 @@ import { SKILL_DEFS, buildInputFromParams } from "@/lib/skill-defs";
 import { generateMarkdown } from "@/lib/skill-templates";
 import { markdownToHwpx } from "@ssabrojs/hwpxjs";
 import { trackUsage } from "@/lib/usage-tracker";
+import { recordSkillCall } from "@/lib/skill-metrics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -179,7 +180,37 @@ export async function POST(req: NextRequest) {
     }
 
     const teacherId = teacher_id || "anon";
-    const files = await Promise.all(workflow.calls.map((c) => generateOne(c, teacherId)));
+    const startedAt = Date.now();
+    const settled = await Promise.allSettled(
+      workflow.calls.map(async (c) => {
+        const t0 = Date.now();
+        try {
+          const file = await generateOne(c, teacherId);
+          await recordSkillCall({
+            skill_name: c.skillName,
+            teacher_id: teacherId,
+            source: "orchestrate",
+            success: true,
+            latency_ms: Date.now() - t0,
+          });
+          return file;
+        } catch (err) {
+          await recordSkillCall({
+            skill_name: c.skillName,
+            teacher_id: teacherId,
+            source: "orchestrate",
+            success: false,
+            latency_ms: Date.now() - t0,
+            error_type: err instanceof Error ? err.name : "error",
+            error_message: err instanceof Error ? err.message : String(err),
+          });
+          throw err;
+        }
+      }),
+    );
+    const files = settled
+      .filter((s): s is PromiseFulfilledResult<Awaited<ReturnType<typeof generateOne>>> => s.status === "fulfilled")
+      .map((s) => s.value);
     await Promise.all(
       workflow.calls.map((c) => trackUsage({ teacher_id: teacherId, skill_name: c.skillName, source: "orchestrate" })),
     );

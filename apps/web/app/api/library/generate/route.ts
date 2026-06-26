@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { markdownToHwpx } from "@ssabrojs/hwpxjs";
 import { generateMarkdown } from "@/lib/skill-templates";
 import { trackUsage } from "@/lib/usage-tracker";
+import { recordSkillCall } from "@/lib/skill-metrics";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -228,11 +229,34 @@ export async function POST(req: NextRequest) {
     }
 
     const input = buildInputFromParams(skill_name, params);
-    const md = generateMarkdown(skill_name as any, input);
-    const buffer = await markdownToHwpx(md, {
-      title: title || `${skill.display_name}_${new Date().toISOString().slice(0, 10)}`,
-      creator: "ssamAI",
-    });
+    const t0 = Date.now();
+    let md: string;
+    let buffer: ArrayBuffer | Uint8Array;
+    try {
+      md = generateMarkdown(skill_name as any, input);
+      buffer = await markdownToHwpx(md, {
+        title: title || `${skill.display_name}_${new Date().toISOString().slice(0, 10)}`,
+        creator: "ssamAI",
+      });
+      await recordSkillCall({
+        skill_name,
+        teacher_id: teacher_id || "anon",
+        source: "single",
+        success: true,
+        latency_ms: Date.now() - t0,
+      });
+    } catch (err) {
+      await recordSkillCall({
+        skill_name,
+        teacher_id: teacher_id || "anon",
+        source: "single",
+        success: false,
+        latency_ms: Date.now() - t0,
+        error_type: err instanceof Error ? err.name : "error",
+        error_message: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
 
     await trackUsage({ teacher_id: teacher_id || "anon", skill_name, source: "single" });
 
